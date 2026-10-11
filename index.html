@@ -66,8 +66,14 @@
     #filters{border:none;max-height:none;padding:10px 14px 4px;display:flex;flex-wrap:wrap;gap:6px}
     #routes-box{border:none;padding:6px 14px 10px}
     #list-view,#detail-view{flex:1;display:flex;flex-direction:column;min-height:0}
-    #detail-view{display:none}
-    #sidebar.detail #list-view{display:none}#sidebar.detail #detail-view{display:flex}
+    #detail-view{display:none;position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100vw;z-index:1600;background:var(--panel);border-left:1px solid var(--border);box-shadow:-6px 0 18px rgba(0,0,0,.35);flex-direction:column}
+    #detail-view.open{display:flex}
+    @media(min-width:801px){body.rp-open .leaflet-right{right:380px}}
+    #detail-view header{position:relative;padding-right:44px}
+    #d-back{position:absolute;top:8px;right:10px;margin:0;padding:2px 9px}
+    #rp-handle{display:none}
+    .rp-sub{font-size:12px;color:var(--muted)} .lab{display:inline-block;font-size:10px;padding:0 5px;border:1px solid #e6b84d;color:#b8860b;border-radius:999px;margin-left:4px;vertical-align:middle}
+    #detail-body a{color:#7fb3ff}
     #list-head{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;font-size:12px;color:var(--muted)}
     .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
     .seg span{padding:3px 8px;cursor:pointer}.seg span.on{background:#1e3a5f;color:#fff}
@@ -97,6 +103,10 @@
       #sheet-handle::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:#4a5a72;margin:0 auto}
       #sidebar header{padding:6px 14px 8px}
       #sidebar header h1{display:none}
+      #detail-view{top:auto;left:0;right:0;width:auto;height:45%;border-left:none;border-top:1px solid var(--border);border-radius:14px 14px 0 0;box-shadow:0 -6px 18px rgba(0,0,0,.45);transition:height .2s}
+      #detail-view.expanded{height:85%}
+      #rp-handle{display:block;padding:8px 0 2px;cursor:pointer;flex:0 0 auto}
+      #rp-handle::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:#4a5a72;margin:0 auto}
     }
   </style>
 </head>
@@ -128,12 +138,12 @@
         <div id="list-head"><span id="list-info"></span><span class="seg" id="scope-seg"><span data-v="view">只看当前视野</span><span data-v="all">全部</span></span></div>
         <div id="point-list"></div>
       </div>
-      <div id="detail-view">
-        <header><button id="d-back" type="button">← 返回</button><h2 id="d-title"></h2><div id="d-era"></div></header>
+    </aside>
+      <aside id="detail-view"><div id="rp-handle" title="展开 / 收起"></div>
+        <header><button id="d-back" type="button" title="关闭">✕</button><h2 id="d-title"></h2><div id="d-era"></div></header>
         <div id="detail-body"></div>
         <div id="detail-actions"><button id="d-edit" type="button">编辑</button><button id="d-focus" class="primary" type="button">在地图定位</button></div>
-      </div>
-    </aside>
+      </aside>
     <div id="map-wrap">
       <button id="toggle-side" type="button">隐藏面板</button>
       <div id="hint" class="hint">点击地图放置知识点</div>
@@ -310,11 +320,8 @@
       points.forEach(p=>{
         if(!vis.has(p.id)) return;
         const m=L.marker([p.lat,p.lng]);
-        m.bindPopup(popupHtml(p));
-        m.on("popupopen",(e)=>{
-          const btn=e.popup.getElement().querySelector(".leaflet-popup-detail");
-          if(btn) btn.onclick=(ev)=>{ev.preventDefault(); openDetail(p.id,{keepView:true});};
-        });
+        m.bindTooltip(escapeHtml(p.title||"未命名"),{direction:"top",offset:[-15,-12]});
+        m.on("click",()=>openDetail(p.id,{keepView:true}));
         m.addTo(markersLayer);
       });
       renderList();
@@ -335,7 +342,7 @@
         r.point_ids.forEach(id=>{ const p=byId[id]; if(p) latlngs.push([p.lat,p.lng]); });
         if(latlngs.length<2) return;
         const color=ROUTE_COLORS[i%ROUTE_COLORS.length];
-        L.polyline(latlngs,{color,weight:3.5,opacity:0.9,dashArray:"8 6"}).bindPopup(`<strong>${escapeHtml(r.title)}</strong><br/><span style="color:#9aa8bc">${escapeHtml(r.note||"示意连线")}</span>`).addTo(routesLayer);
+        L.polyline(latlngs,{color,weight:3.5,opacity:0.9,dashArray:"8 6"}).bindTooltip(escapeHtml(r.title),{sticky:true}).on("click",()=>openRoute(r)).addTo(routesLayer);
       });
     }
     function cardHtml(p){
@@ -370,7 +377,6 @@
     function setCollapsed(c){ appEl.classList.toggle("collapsed",c); tg.textContent=c?"显示面板":"隐藏面板"; setTimeout(()=>map.invalidateSize(),250); }
     function openDetail(id,opts={}){
       const p=points.find(x=>x.id===id); if(!p) return;
-      if(!el.sidebar.classList.contains("detail")) listScroll=el.list.scrollTop;
       detailId=id; if(focusId!==id){ focusId=id; renderMarkers(); }
       el.dTitle.textContent=p.title||"未命名";
       el.dEra.textContent=(p.era||"") + (p.tags&&p.tags.length?(" · "+p.tags.join(" / ")):"") + " · " + regionOf(p);
@@ -383,15 +389,41 @@
         section("地理 / 怎么走", p.geo_notes) + section("出行提示", p.visit_tips) + photos +
         section("坐标", `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
       el.dBody.scrollTop=0;
-      el.sidebar.classList.add("detail");
-      if(appEl.classList.contains("collapsed")) setCollapsed(false);
-      if(window.matchMedia("(max-width:800px)").matches) el.sidebar.classList.add("expanded");
+      showPanel(true);
       if(!opts.keepView) map.setView([p.lat,p.lng], Math.max(map.getZoom(),9));
     }
     function closeDetail(){
-      el.sidebar.classList.remove("detail"); detailId=null;
+      $("detail-view").classList.remove("open","expanded"); document.body.classList.remove("rp-open"); detailId=null;
       if(focusId){ focusId=null; renderMarkers(); } else renderList();
-      el.list.scrollTop=listScroll;
+    }
+    function showPanel(isPoint){
+      const pv=$("detail-view"); $("detail-actions").style.display=isPoint?"flex":"none";
+      if(window.matchMedia("(max-width:800px)").matches) el.sidebar.classList.remove("expanded");
+      pv.classList.add("open"); document.body.classList.add("rp-open");
+    }
+    // 通用内容页：路线 / 工程分段 / 工程节点都走右侧栏
+    function openInfo(title,sub,html){
+      detailId=null; if(focusId){ focusId=null; renderMarkers(); }
+      el.dTitle.textContent=title; el.dEra.innerHTML=sub; el.dBody.innerHTML=html; el.dBody.scrollTop=0; showPanel(false);
+    }
+    function srcSection(list){ if(!list||!list.length) return ""; return `<section><h3>出处</h3><ul style="margin:0;padding-left:1.2em">${list.map(s=>`<li style="font-size:13px;line-height:1.6"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title||s.url)}</a></li>`).join("")}</ul></section>`; }
+    function openSeg(pr,s){
+      openInfo(s.title, `${escapeHtml(pr.title)} · ${escapeHtml(s.line)}${s.schematic?'<span class="lab">示意线</span>':''}`,
+        section("基本信息",[s.mode&&("形式："+s.mode), s.length_km!=null&&("长度：约 "+s.length_km+" km")].filter(Boolean).join("\n"))+
+        section("说明", s.desc||s.note||"暂无说明。")+section("走向依据", s.geometry_source)+srcSection(s.sources&&s.sources.length?s.sources:pr.sources)+
+        (pr.intro?section("工程概况",pr.intro):"")+section("注意",pr.caveat));
+    }
+    function openNode(pr,n){
+      openInfo(n.title, `${escapeHtml(pr.title)} · ${escapeHtml(n.kind||"")}${n.approx?'<span class="lab">约位</span>':''}`,
+        section("说明", n.desc||n.note||"暂无说明。")+(n.approx?section("位置","约位：坐标取附近村镇，非精确位置"):"")+
+        section("坐标", `${(+n.lat).toFixed(5)}, ${(+n.lng).toFixed(5)}`)+srcSection(n.sources));
+    }
+    function openRoute(r){
+      const byId=Object.fromEntries(points.map(p=>[p.id,p]));
+      const stops=r.point_ids.map(i=>byId[i]).filter(Boolean);
+      openInfo(r.title, "示意路线"+((r.tags&&r.tags.length)?" · "+escapeHtml(r.tags.join(" / ")):""),
+        section("说明", r.note||r.desc||"示意连线")+`<section><h3>途经点（${stops.length}）</h3><ol style="margin:0;padding-left:1.4em">${stops.map(p=>`<li style="font-size:14px;line-height:1.8"><a href="#" data-pid="${p.id}">${escapeHtml(p.title)}</a></li>`).join("")}</ol></section>`);
+      el.dBody.querySelectorAll("a[data-pid]").forEach(a=>a.onclick=e=>{e.preventDefault(); openDetail(a.dataset.pid);});
     }
     function refreshView(){ renderMarkers(); }
 
@@ -420,7 +452,8 @@
     el.backdrop.onclick=(e)=>{ if(e.target===el.backdrop) closeModal(); };
     $("d-back").onclick=closeDetail;
     $("d-edit").onclick=()=>{ if(detailId) openEdit(detailId); };
-    $("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; map.setView([p.lat,p.lng],Math.max(map.getZoom(),12)); if(window.matchMedia("(max-width:800px)").matches) el.sidebar.classList.remove("expanded"); };
+    $("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; map.setView([p.lat,p.lng],Math.max(map.getZoom(),12)); if(window.matchMedia("(max-width:800px)").matches) $("detail-view").classList.remove("expanded"); };
+    $("rp-handle").onclick=()=>{ $("detail-view").classList.toggle("expanded"); };
     el.search.oninput=refreshView;
     el.btnFilter.onclick=()=>{ const on=el.filterArea.classList.toggle("show"); el.btnFilter.classList.toggle("on",on); };
     el.btnManage.onclick=(e)=>{ e.stopPropagation(); el.manageMenu.classList.toggle("show"); };
@@ -536,11 +569,11 @@
           const color=PROJECT_LINE_COLORS[s.line]||"#ff7a59";
           const dash=s.schematic?"10 7":null;
           L.polyline(ll,{color:"#111",weight:7,opacity:0.6,dashArray:dash,interactive:false}).addTo(projectsLayer);
-          L.polyline(ll,{color,weight:4,opacity:0.95,dashArray:dash}).bindPopup(segPopup(pr,s)).addTo(projectsLayer);
+          L.polyline(ll,{color,weight:4,opacity:0.95,dashArray:dash}).bindTooltip(escapeHtml(s.title),{sticky:true}).on("click",()=>openSeg(pr,s)).addTo(projectsLayer);
         });
         pr.nodes.forEach(n=>{
           L.circleMarker([n.lat,n.lng],{radius:5,color:"#111",weight:n.approx?1.5:2,fillColor:n.approx?"#ffffff":"#ffffff",fillOpacity:n.approx?0.15:0.95,dashArray:n.approx?"2 2":null})
-            .bindTooltip(escapeHtml(n.kind||""),{direction:"top",offset:[0,-4],className:""}).bindPopup(nodePopup(pr,n)).addTo(projectsLayer);
+            .bindTooltip(escapeHtml(n.title+(n.kind?" · "+n.kind:"")),{direction:"top",offset:[0,-4],className:""}).on("click",()=>openNode(pr,n)).addTo(projectsLayer);
         });
       });
       updateLegend();
