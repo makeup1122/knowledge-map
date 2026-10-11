@@ -8,7 +8,7 @@
   <style>
     :root{--bg:#0f1419;--panel:#1a2332;--border:#2d3a4d;--text:#e7ecf3;--muted:#9aa8bc;--accent:#3d8bfd;--danger:#e35d6a;--card:#152033;--warn:#e6b84d}
     *{box-sizing:border-box}html,body{height:100%;margin:0;font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
-    #app{display:grid;grid-template-columns:360px 1fr;height:100%}
+    #app{display:grid;grid-template-columns:360px 1fr;height:100%;transition:grid-template-columns .2s}#app.collapsed{grid-template-columns:0 1fr}#app.collapsed #sidebar{overflow:hidden;border:none}#toggle-side{position:absolute;z-index:1100;left:10px;top:80px;background:#1a2332;color:#e7ecf3;border:1px solid #2d3a4d;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
     #sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;z-index:2}
     #sidebar header{padding:14px 14px 10px;border-bottom:1px solid var(--border)}
     #sidebar header h1{margin:0 0 4px;font-size:18px}
@@ -59,7 +59,7 @@
     textarea{min-height:64px;resize:vertical}textarea.tall{min-height:100px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
     .popup-actions{margin-top:8px}
-    @media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:40% 60%}#sidebar{border-right:none;border-bottom:1px solid var(--border)}#detail-panel{width:100%}}
+    @media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:40% 60%}#app.collapsed{grid-template-columns:1fr;grid-template-rows:0 100%}#sidebar{border-right:none;border-bottom:1px solid var(--border)}#detail-panel{width:100%}}
   </style>
 </head>
 <body>
@@ -67,7 +67,7 @@
     <aside id="sidebar">
       <header>
         <h1>知识地图</h1>
-        <p>主题筛选 · 示意连线 · 二级详情 · 「待核实」标记</p>
+        <p>选主题、搜索或勾选路线后才显示标记；点列表可单独定位</p>
         <input id="search" type="search" placeholder="搜索标题 / 年代 / 简述…" />
       </header>
       <div id="filters"></div>
@@ -82,6 +82,7 @@
       <div id="point-list"></div>
     </aside>
     <div id="map-wrap">
+      <button id="toggle-side" type="button">隐藏面板</button>
       <div id="hint" class="hint">点击地图放置知识点</div>
       <div id="map"></div>
     </div>
@@ -125,15 +126,24 @@
     const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OSM'});
     const topo=L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:'OpenTopoMap'});
     const waterways=L.layerGroup(); let waterwaysEnabled=false,waterwaysLoading=false,waterwaysTimer=null;
-    osm.addTo(map);
-    L.control.layers({"标准底图":osm,"地形 / 等高线 (OpenTopoMap)":topo},{"河网 (OSM 水系)":waterways},{collapsed:false,position:"topright"}).addTo(map);
+    const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri World Imagery"});
+    const light=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,attribution:"&copy; OSM &copy; CARTO"});
+    const hillshade=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,opacity:0.45,attribution:"Esri Hillshade"});
+    const labels=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri Labels"});
+    const rail=L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png",{maxZoom:19,attribution:"OpenRailwayMap"});
+    light.addTo(map);
+    L.control.layers(
+      {"简洁浅色":light,"标准底图 (OSM)":osm,"地形 / 等高线 (OpenTopoMap)":topo,"卫星影像":sat},
+      {"河网 (OSM 水系)":waterways,"山体阴影":hillshade,"地名与边界（配卫星用）":labels,"铁路":rail},
+      {collapsed:true,position:"topright"}).addTo(map);
     const markersLayer=L.layerGroup().addTo(map);
     const routesLayer=L.layerGroup().addTo(map);
 
     let points=loadPoints();
     let routes=loadRoutes();
     let activeTags=new Set();
-    let enabledRoutes=new Set(routes.map(r=>r.id));
+    let enabledRoutes=new Set();
+    let focusId=null;
     let addMode=false, editingId=null, detailId=null;
 
     const el={
@@ -203,7 +213,7 @@
         return `<label class="route-row"><input type="checkbox" data-id="${r.id}" ${on?"checked":""}/><span class="swatch" style="background:${color}"></span><span>${escapeHtml(r.title)}</span></label>`;
       }).join("") || '<div class="empty" style="padding:4px 0">暂无路线</div>';
       el.routes.querySelectorAll("input").forEach(inp=>{
-        inp.onchange=()=>{ if(inp.checked) enabledRoutes.add(inp.dataset.id); else enabledRoutes.delete(inp.dataset.id); drawRoutes(); };
+        inp.onchange=()=>{ if(inp.checked) enabledRoutes.add(inp.dataset.id); else enabledRoutes.delete(inp.dataset.id); renderMarkers(); };
       });
     }
 
@@ -228,7 +238,12 @@
 
     function renderMarkers(){
       markersLayer.clearLayers();
-      const vis=new Set(visiblePoints().map(p=>p.id));
+      const q=(el.search.value||"").trim();
+      const routeIds=new Set(); routes.forEach(r=>{ if(enabledRoutes.has(r.id)) r.point_ids.forEach(i=>routeIds.add(i)); });
+      const vis=new Set();
+      if(activeTags.size||q) visiblePoints().forEach(p=>vis.add(p.id));
+      routeIds.forEach(i=>vis.add(i));
+      if(focusId) vis.add(focusId);
       points.forEach(p=>{
         if(!vis.has(p.id)) return;
         const m=L.marker([p.lat,p.lng]);
@@ -274,7 +289,7 @@
 
     function section(title,text){ if(!text) return ""; return `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p></section>`; }
     function openDetail(id){
-      const p=points.find(x=>x.id===id); if(!p) return; detailId=id;
+      const p=points.find(x=>x.id===id); if(!p) return; detailId=id; if(focusId!==id){ focusId=id; renderMarkers(); }
       el.dTitle.textContent=p.title||"未命名";
       el.dEra.textContent=(p.era||"") + (p.tags&&p.tags.length?(" · "+p.tags.join(" / ")):"");
       const photos=(p.photos&&p.photos.length)?`<section><h3>照片</h3><div id="detail-photos">${p.photos.map(u=>`<img src="${escapeHtml(u)}" alt="" loading="lazy"/>`).join("")}</div></section>`:"";
@@ -343,14 +358,16 @@
         incoming.map(normalize).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).forEach(p=>{
           if(byId.has(p.id)) byId.set(p.id,{...byId.get(p.id),...p}); else byId.set(p.id,p);
         });
-        points=[...byId.values()]; enabledRoutes=new Set(routes.map(r=>r.id));
-        saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+        points=[...byId.values()]; enabledRoutes=new Set();
+        saveAll(); renderFilters(); renderRouteToggles(); refreshView(); map.setView([37.8,112.3],7);
+    const appEl=document.getElementById("app"), tg=document.getElementById("toggle-side");
+    tg.onclick=()=>{ appEl.classList.toggle("collapsed"); tg.textContent=appEl.classList.contains("collapsed")?"显示面板":"隐藏面板"; setTimeout(()=>map.invalidateSize(),250); };
       }catch(err){ alert("导入失败："+err.message); }
     };
     el.btnReset.onclick=()=>{
       if(!confirm("恢复种子点与示意路线？")) return;
       points=SEED_POINTS.map(normalize); routes=JSON.parse(JSON.stringify(SEED_ROUTES));
-      enabledRoutes=new Set(routes.map(r=>r.id)); saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+      enabledRoutes=new Set(); saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
     };
 
     async function refreshWaterways(){
