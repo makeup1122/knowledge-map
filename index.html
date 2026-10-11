@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>知识地图</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="lf/leaflet.css" />
   <style>
     :root{--bg:#0f1419;--panel:#1a2332;--border:#2d3a4d;--text:#e7ecf3;--muted:#9aa8bc;--accent:#3d8bfd;--danger:#e35d6a;--card:#152033;--warn:#e6b84d}
     *{box-sizing:border-box}html,body{height:100%;margin:0;font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
@@ -20,7 +20,7 @@
     #routes-box{padding:8px 12px;border-bottom:1px solid var(--border)}
     #routes-box h2{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:600}
     .route-row{display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0;color:var(--text)}
-    .route-row input{width:auto;flex:0 0 auto;margin:0}.swatch{width:14px;height:3px;border-radius:2px;flex:0 0 auto}
+    .leaflet-control-layers input{width:auto;margin:0 6px 0 0}.leaflet-control-layers label{display:flex;align-items:center;margin:2px 0;color:#333;font-size:12px}.route-row input{width:auto;flex:0 0 auto;margin:0}.swatch{width:14px;height:3px;border-radius:2px;flex:0 0 auto}
     #toolbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap}
     button{appearance:none;border:1px solid var(--border);background:#243044;color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer}
     button:hover{border-color:var(--accent)}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -37,9 +37,9 @@
     #map-wrap{position:relative;min-height:0}#map{height:100%;width:100%;background:#0b1016}
     .hint{position:absolute;z-index:1000;left:50%;top:12px;transform:translateX(-50%);background:rgba(26,35,50,.92);border:1px solid var(--border);padding:8px 12px;border-radius:999px;font-size:13px;display:none}
     .hint.show{display:block}
-    #detail{display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.55);align-items:stretch;justify-content:flex-end}
-    #detail.show{display:flex}
-    #detail-panel{width:min(520px,100%);background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:100%}
+    #detail{display:none;position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);z-index:3000;background:transparent;box-shadow:-6px 0 18px rgba(0,0,0,.35)}
+    #detail.show{display:flex}body.detail-open .leaflet-top.leaflet-right{right:min(520px,100vw)}
+    #detail-panel{width:100%;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:100%}
     #detail-panel header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start}
     #detail-panel header .titles{flex:1;min-width:0}
     #detail-panel header h2{margin:0 0 4px;font-size:18px;line-height:1.3}
@@ -114,7 +114,7 @@
     </div>
   </div></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="lf/leaflet.js"></script>
   <script>
     const STORAGE_KEY = "knowledge-map-points-v3";
     const ROUTE_KEY = "knowledge-map-routes-v3";
@@ -298,10 +298,10 @@
       el.dBody.innerHTML = verify + section("概述", p.desc||"暂无简述。") + section("详细介绍", p.detail||"二级详情还空着，可点编辑补充。") +
         section("地理 / 怎么走", p.geo_notes) + section("出行提示", p.visit_tips) + photos +
         section("坐标", `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
-      el.detail.classList.add("show");
+      el.detail.classList.add("show"); document.body.classList.add("detail-open");
       map.setView([p.lat,p.lng], Math.max(map.getZoom(),9));
     }
-    function closeDetail(){ el.detail.classList.remove("show"); detailId=null; }
+    function closeDetail(){ el.detail.classList.remove("show"); document.body.classList.remove("detail-open"); detailId=null; }
     function refreshView(){ renderMarkers(); }
 
     function setAddMode(on){ addMode=on; el.btnAdd.textContent=on?"取消加点":"加点"; el.hint.classList.toggle("show",on); map.getContainer().style.cursor=on?"crosshair":""; }
@@ -328,7 +328,7 @@
     el.btnCancel.onclick=closeModal;
     el.backdrop.onclick=(e)=>{ if(e.target===el.backdrop) closeModal(); };
     document.getElementById("d-close").onclick=closeDetail;
-    el.detail.onclick=(e)=>{ if(e.target===el.detail) closeDetail(); };
+    
     document.getElementById("d-edit").onclick=()=>{ if(detailId) openEdit(detailId); };
     document.getElementById("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; map.setView([p.lat,p.lng],Math.max(map.getZoom(),12)); closeDetail(); };
     el.search.oninput=refreshView;
@@ -358,9 +358,7 @@
           if(byId.has(p.id)) byId.set(p.id,{...byId.get(p.id),...p}); else byId.set(p.id,p);
         });
         points=[...byId.values()]; enabledRoutes=new Set();
-        saveAll(); renderFilters(); renderRouteToggles(); refreshView(); map.setView([37.8,112.3],7);
-    const appEl=document.getElementById("app"), tg=document.getElementById("toggle-side");
-    tg.onclick=()=>{ appEl.classList.toggle("collapsed"); tg.textContent=appEl.classList.contains("collapsed")?"显示面板":"隐藏面板"; setTimeout(()=>map.invalidateSize(),250); };
+        saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
       }catch(err){ alert("导入失败："+err.message); }
     };
     el.btnReset.onclick=()=>{
@@ -413,7 +411,9 @@
     map.on("moveend", scheduleRail);
     function fitAll(){ const vis=visiblePoints(); if(!vis.length) return; map.fitBounds(L.latLngBounds(vis.map(p=>[p.lat,p.lng])).pad(0.15)); }
 
-    renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+    renderFilters(); renderRouteToggles(); refreshView(); map.setView([37.8,112.3],7);
+    const appEl=document.getElementById("app"), tg=document.getElementById("toggle-side");
+    tg.onclick=()=>{ appEl.classList.toggle("collapsed"); tg.textContent=appEl.classList.contains("collapsed")?"显示面板":"隐藏面板"; setTimeout(()=>map.invalidateSize(),250); };
   </script>
 </body>
 </html>
