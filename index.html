@@ -306,7 +306,7 @@
       if(activeTags.size||q) visiblePoints().forEach(p=>vis.add(p.id));
       routeIds.forEach(i=>vis.add(i));
       if(focusId) vis.add(focusId);
-      if(map.getZoom()>=8 && !queryActive()){ const b=map.getBounds(); points.forEach(p=>{ if(b.contains([p.lat,p.lng])) vis.add(p.id); }); }
+      if(!focusId && map.getZoom()>=8 && !queryActive()){ const b=map.getBounds(); points.forEach(p=>{ if(b.contains([p.lat,p.lng])) vis.add(p.id); }); }
       points.forEach(p=>{
         if(!vis.has(p.id)) return;
         const m=L.marker([p.lat,p.lng]);
