@@ -130,11 +130,11 @@
     const light=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,attribution:"&copy; OSM &copy; CARTO"});
     const hillshade=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,opacity:0.45,attribution:"Esri Hillshade"});
     const labels=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri Labels"});
-    const rail=L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png",{maxZoom:19,attribution:"OpenRailwayMap"});
+    const rail=L.layerGroup(); let railOn=false, railLoading=false, railTimer=null;
     light.addTo(map);
     L.control.layers(
       {"简洁浅色":light,"标准底图 (OSM)":osm,"地形 / 等高线 (OpenTopoMap)":topo,"卫星影像":sat},
-      {"河网 (OSM 水系)":waterways,"山体阴影":hillshade,"地名与边界（配卫星用）":labels,"铁路":rail},
+      {"河网 (OSM 水系)":waterways,"山体阴影":hillshade,"地名与边界（配卫星用）":labels,"铁路（放大到 8 级以上显示）":rail},
       {collapsed:true,position:"topright"}).addTo(map);
     const markersLayer=L.layerGroup().addTo(map);
     const routesLayer=L.layerGroup().addTo(map);
@@ -390,6 +390,28 @@
     map.on("overlayadd",e=>{ if(e.layer===waterways){ waterwaysEnabled=true; scheduleWaterways(); }});
     map.on("overlayremove",e=>{ if(e.layer===waterways){ waterwaysEnabled=false; waterways.clearLayers(); }});
     map.on("moveend", scheduleWaterways);
+    async function refreshRail(){
+      if(!railOn||railLoading) return;
+      if(map.getZoom()<8){ rail.clearLayers(); return; }
+      const b=map.getBounds();
+      const q=`[out:json][timeout:25];way["railway"~"rail|subway|light_rail"](${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()});out geom;`;
+      railLoading=true;
+      try{
+        const res=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:q});
+        if(!res.ok) throw new Error("Overpass "+res.status);
+        const json=await res.json(); rail.clearLayers();
+        (json.elements||[]).forEach(w=>{
+          if(!w.geometry||w.geometry.length<2) return;
+          const ll=w.geometry.map(g=>[g.lat,g.lon]);
+          L.polyline(ll,{color:"#333",weight:3,opacity:0.8}).addTo(rail);
+          L.polyline(ll,{color:"#fff",weight:1.5,opacity:0.9,dashArray:"6 6"}).addTo(rail);
+        });
+      }catch(e){console.warn(e)} finally{railLoading=false}
+    }
+    function scheduleRail(){ if(!railOn) return; clearTimeout(railTimer); railTimer=setTimeout(refreshRail,700); }
+    map.on("overlayadd",e=>{ if(e.layer===rail){ railOn=true; scheduleRail(); }});
+    map.on("overlayremove",e=>{ if(e.layer===rail){ railOn=false; rail.clearLayers(); }});
+    map.on("moveend", scheduleRail);
     function fitAll(){ const vis=visiblePoints(); if(!vis.length) return; map.fitBounds(L.latLngBounds(vis.map(p=>[p.lat,p.lng])).pad(0.15)); }
 
     renderFilters(); renderRouteToggles(); refreshView(); fitAll();
