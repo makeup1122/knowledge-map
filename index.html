@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>知识地图</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root{--bg:#0f1419;--panel:#1a2332;--border:#2d3a4d;--text:#e7ecf3;--muted:#9aa8bc;--accent:#3d8bfd;--danger:#e35d6a;--card:#152033;--warn:#e6b84d}
+    *{box-sizing:border-box}html,body{height:100%;margin:0;font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+    #app{display:grid;grid-template-columns:360px 1fr;height:100%}
+    #sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;z-index:2}
+    #sidebar header{padding:14px 14px 10px;border-bottom:1px solid var(--border)}
+    #sidebar header h1{margin:0 0 4px;font-size:18px}
+    #sidebar header p{margin:0;font-size:12px;color:var(--muted);line-height:1.45}
+    #search{margin-top:8px;width:100%;background:#0f1724;border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px}
+    #filters{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;max-height:96px;overflow:auto}
+    .chip{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#243044;color:var(--muted);cursor:pointer;user-select:none}
+    .chip.on{border-color:var(--accent);color:#fff;background:#1e3a5f}
+    #routes-box{padding:8px 12px;border-bottom:1px solid var(--border)}
+    #routes-box h2{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:600}
+    .route-row{display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0;color:var(--text)}
+    .swatch{width:14px;height:3px;border-radius:2px;flex:0 0 auto}
+    #toolbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap}
+    button{appearance:none;border:1px solid var(--border);background:#243044;color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer}
+    button:hover{border-color:var(--accent)}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    button.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+    #point-list{flex:1;overflow:auto;padding:8px}
+    .point-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:var(--card)}
+    .point-card:hover{border-color:var(--accent)}
+    .point-card h3{margin:0 0 4px;font-size:14px}
+    .point-card .meta{font-size:12px;color:var(--muted);line-height:1.4}
+    .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--border);color:var(--muted);margin-left:4px}
+    .badge.dest{border-color:#5ac8a8;color:#5ac8a8}
+    .badge.warn{border-color:var(--warn);color:var(--warn)}
+    .empty{color:var(--muted);font-size:13px;padding:16px 8px;text-align:center;line-height:1.6}
+    #map-wrap{position:relative;min-height:0}#map{height:100%;width:100%;background:#0b1016}
+    .hint{position:absolute;z-index:1000;left:50%;top:12px;transform:translateX(-50%);background:rgba(26,35,50,.92);border:1px solid var(--border);padding:8px 12px;border-radius:999px;font-size:13px;display:none}
+    .hint.show{display:block}
+    #detail{display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.55);align-items:stretch;justify-content:flex-end}
+    #detail.show{display:flex}
+    #detail-panel{width:min(520px,100%);background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:100%}
+    #detail-panel header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start}
+    #detail-panel header .titles{flex:1;min-width:0}
+    #detail-panel header h2{margin:0 0 4px;font-size:18px;line-height:1.3}
+    #detail-panel header .era{font-size:13px;color:var(--muted)}
+    #detail-body{flex:1;overflow:auto;padding:16px}
+    #detail-body section{margin-bottom:16px}
+    #detail-body h3{margin:0 0 8px;font-size:13px;color:var(--accent);font-weight:600}
+    #detail-body p{font-size:14px;line-height:1.7;margin:0 0 8px;white-space:pre-wrap}
+    #detail-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #detail-photos img{width:100%;border-radius:8px;border:1px solid var(--border);object-fit:cover;max-height:140px}
+    #detail-actions{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
+    #modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4000;align-items:center;justify-content:center;padding:16px}
+    #modal-backdrop.show{display:flex}
+    #modal{width:min(460px,100%);background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;max-height:92vh;overflow:auto}
+    #modal h2{margin:0 0 12px;font-size:16px}label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+    input,textarea{width:100%;background:#0f1724;border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:inherit}
+    textarea{min-height:64px;resize:vertical}textarea.tall{min-height:100px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+    .popup-actions{margin-top:8px}
+    @media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:40% 60%}#sidebar{border-right:none;border-bottom:1px solid var(--border)}#detail-panel{width:100%}}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header>
+        <h1>知识地图</h1>
+        <p>主题筛选 · 示意连线 · 二级详情 · 「待核实」标记</p>
+        <input id="search" type="search" placeholder="搜索标题 / 年代 / 简述…" />
+      </header>
+      <div id="filters"></div>
+      <div id="routes-box"><h2>示意路线（可开关）</h2><div id="routes"></div></div>
+      <div id="toolbar">
+        <button id="btn-add" class="primary" type="button">加点</button>
+        <button id="btn-export" type="button">导出 JSON</button>
+        <button id="btn-import" type="button">导入 JSON</button>
+        <button id="btn-reset" type="button">恢复种子</button>
+        <input id="import-file" type="file" accept="application/json,.json" hidden />
+      </div>
+      <div id="point-list"></div>
+    </aside>
+    <div id="map-wrap">
+      <div id="hint" class="hint">点击地图放置知识点</div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <div id="detail"><div id="detail-panel">
+    <header><div class="titles"><h2 id="d-title"></h2><div class="era" id="d-era"></div></div><button id="d-close" type="button">关闭</button></header>
+    <div id="detail-body"></div>
+    <div id="detail-actions"><button id="d-edit" type="button">编辑</button><button id="d-focus" class="primary" type="button">在地图定位</button></div>
+  </div></div>
+
+  <div id="modal-backdrop"><div id="modal">
+    <h2 id="modal-title">添加知识点</h2>
+    <label>标题</label><input id="f-title" maxlength="80" />
+    <label>年代</label><input id="f-era" maxlength="80" />
+    <label>主题标签（逗号分隔）</label><input id="f-tags" placeholder="明长城, 走西口" />
+    <label>简述</label><textarea id="f-desc"></textarea>
+    <label>详情正文</label><textarea id="f-detail" class="tall"></textarea>
+    <label>地理 / 怎么走</label><textarea id="f-geo"></textarea>
+    <label>出行提示</label><textarea id="f-visit"></textarea>
+    <label>出处 / 来源</label><input id="f-source" />
+    <label><input id="f-verified" type="checkbox" style="width:auto;margin-right:6px" />已核实</label>
+    <label>照片 URL（每行一个）</label><textarea id="f-photos"></textarea>
+    <div class="row"><div><label>lat</label><input id="f-lat" type="number" step="any" /></div><div><label>lng</label><input id="f-lng" type="number" step="any" /></div></div>
+    <div class="modal-actions">
+      <button id="btn-delete" class="danger" type="button" style="margin-right:auto;display:none">删除</button>
+      <button id="btn-cancel" type="button">取消</button>
+      <button id="btn-save" class="primary" type="button">保存</button>
+    </div>
+  </div></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const STORAGE_KEY = "knowledge-map-points-v3";
+    const ROUTE_KEY = "knowledge-map-routes-v3";
+    const SEED_POINTS = [{"id": "sx_01", "title": "晋阳（太原）", "era": "春秋至宋 · 赵国初都 / 唐北都 / 北宋平晋阳", "desc": "山西政治中心的长线：赵简子筑晋阳，其后为唐王朝北都；979年宋灭北汉后火灌晋阳，新城太原逐步兴起。读山西政治史往往从这里起笔。", "lat": 37.729629, "lng": 112.493567, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_02", "title": "平城（大同）", "era": "北魏 · 398–494 年首都", "desc": "拓跋珪迁都于此，北魏前期政治与佛教中心；云冈石窟即这一时期国家工程。后迁洛阳，平城仍是北方军事重镇。", "lat": 40.092319, "lng": 113.295266, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_03", "title": "雁门关", "era": "战国至明清 · 长城要塞", "desc": "勾注山脉隘口，中原与草原往来的锁钥。白登之战后汉匈和亲、唐与突厥、宋辽对峙，多次战役与和议都绕不开此关。", "lat": 39.179352, "lng": 112.875901, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["明长城", "晋北防线"]}, {"id": "sx_04", "title": "娘子关", "era": "唐至明清 · 晋冀咽喉", "desc": "太行山晋冀通道上的关城，传说与平阳公主驻兵有关。近代正太铁路经此，是山西东出华北平原的要冲。", "lat": 37.960136, "lng": 113.868813, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["明长城", "晋北防线"]}, {"id": "sx_05", "title": "平遥古城", "era": "明清 · 晋商金融中心", "desc": "保存完整的明清县城格局；日升昌等票号在此兴起，山西商人把汇兑网络铺向全国。看晋商与内地金融史的第一站。", "lat": 37.15472, "lng": 112.143419, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_06", "title": "运城盐池（解池）", "era": "先秦至今 · 河东盐业", "desc": "河东盐自先秦即为国家财源，解州盐池催生运城聚落与盐务制度。理解山西南部经济与王朝财政，盐池是关键节点。", "lat": 35.01383, "lng": 110.997276, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线", "明长城", "晋北防线"]}, {"id": "sx_07", "title": "五台山", "era": "北朝以降 · 文殊道场", "desc": "中国佛教四大名山之一，北魏起寺院林立，唐宋皇家屡有兴建。宗教、朝贡与边疆文化交汇，不只是风景名胜。", "lat": 38.953713, "lng": 113.633135, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_08", "title": "侯马（新田）", "era": "春秋 · 晋国晚期都城", "desc": "晋景公迁都新田后，晋国在此维持百余年；侯马盟书等考古材料，是读春秋宗法与盟誓制度的一手现场。", "lat": 35.619121, "lng": 111.365762, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_09", "title": "壶口瀑布（黄河）", "era": "古今 · 晋陕峡谷节点", "desc": "黄河切穿晋陕峡谷最窄处之一，航运与渡口史、黄河治理叙事常提到此处。地理险要本身即历史舞台。", "lat": 36.148703, "lng": 110.44392, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "sx_10", "title": "上党（长治一带）", "era": "战国至近代 · 太行屋脊", "desc": "「与天为党」的高地走廊，长平之战就在附近；历代视上党为控扼河东与中原的军事锁钥。", "lat": 36.187171, "lng": 113.100345, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "历史整理 · 山西起点", "verified": true, "tags": ["山西长线"]}, {"id": "bt_01", "title": "右卫古城（右玉旧城）", "era": "赵—明清 · 善无 / 大同右卫", "desc": "今右玉右卫镇。赵武灵王善无，秦汉雁门郡治；明大同右卫（后并玉林卫），嘉靖时俺答围城八月。隆庆和议后为杀虎口互市后方，走西口入凉城、土默川的起点之一。1972年前为朔平府/右玉县城。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.161328, "lng": 112.344444, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线", "走西口"]}, {"id": "bt_02", "title": "杀虎口", "era": "明—清 · 晋蒙关口 / 互市与走西口", "desc": "右玉北，苍头河出晋入内蒙古处。明长城关口；隆庆和议后互市；清代走西口东线要冲，通向凉城、土默川。俺答东线进逼常经此轴。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.246417, "lng": 112.306312, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线", "走西口"]}, {"id": "bt_03", "title": "偏头关（偏关）", "era": "明 · 外三关之西", "desc": "外三关（雁门、宁武、偏头）最西。管涔山北尾，内边与外边在附近交汇。俺答西线自河套东岸南下，常指向偏关—老营一带。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.436554, "lng": 111.492011, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_04", "title": "老营堡", "era": "明正统以降 · 「晋北第一强堡」", "desc": "偏关东约四十里、丫角山东南。山西镇前沿大堡，专挡丫角山破边后南下忻州之路。明时未破城；嘉靖间多次城外大战（含青石崖双碑墕）。1938年日军短暂占领。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.524834, "lng": 111.842409, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_05", "title": "丫角山（柏杨岭）", "era": "明 · 内外边墙交汇处", "desc": "老营西北。内边与外边在此相接；老牛湾以东三十余公里，沿墙北侧清水河南境黄土梁为骑兵东进走廊（「丫角迤西直到老牛湾，皆虏路」）。破此可避正面强攻偏头关。来源：豆包分享对话（AI生成，待核实）。注意：与县川河无关。", "lat": 39.615807, "lng": 111.832192, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_06", "title": "老牛湾", "era": "明 · 外边西端 / 黄河入晋", "desc": "偏关极西北、清水河南端。黄河入山西处，明长城外边西端。俺答西线常自此一带离开干流河谷，沿墙北侧东趋丫角山。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.635134, "lng": 111.44536, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_07", "title": "利民堡（利民镇）", "era": "明成化以降 · 内边中路", "desc": "朔州利民镇，老营以东、宁武阳方口以西。内边平川（莜麦川）缺口；嘉靖二十七年歇头场等战。功能：挡住已过丫角山/老营后东趋宁武、忻州的骑兵。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.3008, "lng": 112.103, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_08", "title": "宁武关 / 阳方口", "era": "明 · 外三关之中 / 恢河谷道", "desc": "恢河出管涔北麓，经阳方口入朔州平原，为桑干上游。外三关中路；骑兵可由此入汾河谷地。与雁门、偏头并称。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.105992, "lng": 112.33012, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["明长城", "晋北防线"]}, {"id": "bt_09", "title": "峙峪遗址", "era": "旧石器晚期 · 约距今2.8万年", "desc": "朔州峙峪村。细石器、石镞/骨镞（早期弓箭线索），马、驴、羚羊等。读晋北史前的本地起点。来源：豆包分享对话（AI生成，待核实）。", "lat": 39.398466, "lng": 112.35284, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前"]}, {"id": "bt_10", "title": "东受降城（托克托）", "era": "唐景龙二年（708） · 三受降城之东", "desc": "张仁愿筑三受降城之一，约在今托克托东胜卫/大皇城一带，控黄河渡口。中受降城在包头南敖陶窑子；西城在乌拉特中旗一带。对话称「受降城外月如霜」指中城非东城。来源：豆包分享对话（AI生成，待核实）；云中郡、东胜卫更早细节不在本分享链接内。", "lat": 40.28092, "lng": 111.158636, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前与北疆", "土默川", "明长城", "晋北防线"]}, {"id": "bt_11", "title": "中受降城（包头南）", "era": "唐 · 三受降城之中", "desc": "约在包头南敖陶窑子一带。对话强调李益「受降城外月如霜」指此城。土默川西端、大青山与黄河南望。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.551318, "lng": 109.911284, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前与北疆", "土默川"]}, {"id": "bt_12", "title": "归化城（呼和浩特旧城）", "era": "明万历 · 1572–1575 / 阿拉坦汗与三娘子", "desc": "俺答（阿拉坦汗）建城，明称归化；三娘子长期经营。康熙建绥远城于其东北，合称归绥；今呼和浩特核心在大召、席力图召一带。土默川政治宗教中心。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.799072, "lng": 111.648644, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前与北疆", "土默川", "明长城", "晋北防线", "走西口"]}, {"id": "bt_13", "title": "河口古镇（托克托）", "era": "清 · 走西口黄河码头", "desc": "托克托黄河渡口古镇，对话称「塞外小汉口」、黄河上中游分界说法之一；有码头与玄龙铁旗杆等遗存叙述。走西口商贸节点。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.247465, "lng": 111.165946, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["走西口"]}, {"id": "bt_14", "title": "昭君博物院（青冢）", "era": "西汉竟宁元年（前33）相关纪念地", "desc": "呼和浩特南郊、大黑河南岸。对话称主流纪念地在此；包头昭君岛/湖/村多为后起纪念地名。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.707241, "lng": 111.676642, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前与北疆", "土默川"]}, {"id": "bt_15", "title": "凉城 / 岱海", "era": "史前—北魏以降 · 土默川东南门户", "desc": "乌兰察布凉城，蛮汉山与晋北黄土高原交接；南越岭即右玉。岱海古称参合陂一带，有老虎山等史前遗址；北魏参合陂之战、拓跋早期活动相关。走西口走廊。来源：豆包分享对话（AI生成，待核实）。", "lat": 40.569, "lng": 112.687193, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前与北疆", "土默川", "明长城", "晋北防线", "走西口"]}, {"id": "bt_16", "title": "海生不浪遗址", "era": "新石器 · 距今约5000–6000年", "desc": "托克托黄河阶地，内蒙古重要新石器遗址（仰韶晚期系统），草原与中原交流线索。来源：豆包分享对话（AI生成，待核实）。（坐标约位：托县南约15km黄河北岸台地（OSM无精确点，待核对））", "lat": 40.15, "lng": 111.17, "detail": "", "geo_notes": "", "visit_tips": "", "photos": [], "source": "豆包分享对话（AI生成）", "verified": false, "tags": ["史前", "史前与北疆", "土默川"]}, {"id": "dest_chunyanggong", "title": "太原纯阳宫", "era": "宋元以降 · 道教宫观 / 现山西省艺术博物馆", "desc": "太原旧城核心区的道教宫观（吕祖庙），五一广场西北隅；全国重点文保，现为山西省艺术博物馆。城市一日游里很顺的「二级详情」点。", "lat": 37.86139, "lng": 112.56583, "detail": "纯阳宫（俗称吕祖庙）在太原迎泽区起凤街1号，五一广场西北角，是太原现存规模较大的道教宫观建筑群，主祀吕洞宾（道号纯阳子）。宫址坐北朝南，多进院落沿中轴展开，布局紧凑又带园林趣味：牌坊—道德之门—吕祖殿—九窑十八洞（八卦院）—玉皇阁/巍阁一线，洞、亭、楼交错，和单纯「大殿排开」的北方官式道观很不一样。\n\n地理上它落在太原盆地城区、汾河以东的旧城商贸核心，地势平缓；和西南晋源的晋阳古城遗址、西北崛围山等「山地/古城」点不在同一片，适合当作市区步行圈的一站，而不是和晋阳半日游硬绑在同一上午。\n\n今天院内同时是山西省艺术博物馆，参观时可并行两条线：宫观空间与道教布局；近现代文保再利用与展览。沿革细目仍以 @历史 核实为准。", "geo_notes": "坐标约 37.8614°N, 112.5658°E（五一广场西北）。太原盆地冲积平原、城区建成区；西侧不远即汾河河谷，但宫观本身不临河。旧城街巷密、停车难，地铁/公交到五一广场步行最省事。与晋阳古城（晋源，约南偏西 15–20 km 量级）需单独交通时段。", "visit_tips": "出发前：查山西省艺术博物馆当日开放与是否临展预约。\n现场：先沿中轴走完五进，再回头看九窑十八洞的八卦平面；适合拍牌坊、琉璃与窑洞回廊。\n串联（同城）：崇善寺、文庙、柳巷/钟楼街步行圈；不要和晋阳古城、天龙山挤进同一上午。\n注意：文保建筑勿攀爬；展厅依馆方规定拍照。", "photos": [], "source": "", "verified": true, "tags": ["出行预读", "太原市区", "山西长线"]}, {"id": "dest_xiaolangdi", "title": "小浪底水利枢纽", "era": "当代 · 黄河中游关键控制性工程（1994–2001）", "desc": "黄河中游末段峡谷出口的大型水利枢纽：防洪、防凌、减淤为主，兼顾供水、灌溉、发电。出行前先弄清「黄河在这里要解决什么」。", "lat": 34.924636, "lng": 112.377297, "detail": "小浪底坝址在河南洛阳孟津（南岸小浪底村）与济源（北岸蓼坞村）之间的黄河干流上，洛阳城区以北约 40 km，三门峡下游约 130 km。这里是黄河中游最后一段峡谷的出口——再往下，河道进入华北平原，泥沙容易落淤，形成地上河。因此它是三门峡以下唯一能取得较大库容的控制性工程，控制流域面积约 69.4 万 km²（约占黄河流域的 92%）。\n\n去之前建议先建立三层认识：\n1）问题：中游多沙 + 下游地上河；伏秋大汛与凌汛威胁并存。\n2）工程：斜心墙堆石坝（坝高约 154 m、坝顶长约 1667 m）；总库容约 126.5 亿 m³，其中淤沙库容约 75.5 亿 m³、长期有效库容约 51 亿 m³；开发任务以防洪、防凌、减淤为主，兼顾供水、灌溉、发电，运用上强调蓄清排浑与调水调沙。\n3）体系：与三门峡、陆浑、故县及东平湖等联合调度，可将下游防洪标准提高到约千年一遇量级（具体调度以官方当年方案为准）。\n\n库区呈东西带状峡谷型水库（常说长约百余公里量级），两岸为崤山—邙山与王屋山等山地丘陵；水位随防洪与调水调沙变化，观景水面相对位置会变。参观叙事通常是「问题—大坝—库区—调度效果」；展览馆适合先建立框架，再上坝区/观景台对照真实峡谷与坝体。", "geo_notes": "坐标约 34.9246°N, 112.3773°E。地貌：黄河中游峡谷末端出口，南岸孟津黄土丘陵、北岸济源王屋山前缘；水库为峡谷河道型。交通：常见经洛阳或济源进景区，山区盘山路多，汛期/调水调沙期可能管制。观景点与库水位相对高差会变，拍照选位宜先看当日水位说明。", "visit_tips": "出发前：查景区开放、观光车与大坝参观是否预约；关注黄河水利相关资讯中的调水调沙或泄洪安排（可能临时关闭局部区域）。\n看什么：①展览馆建立「泥沙—防洪—减淤」框架；②观景台看坝体尺度与峡谷约束；③若开放，再看泄洪建筑物外观（勿进入禁区）。\n安全：严格按景区指示，远离禁入的坝肩、泄洪与施工区；雨天注意湿滑与山路。\n串联：洛阳市区文物半日 + 小浪底半日较常见；不要指望「顺便看完三门峡大坝」同一天轻松往返。", "photos": [], "source": "", "verified": true, "tags": ["出行预读", "黄河治理"]}];
+    const SEED_ROUTES = [{"id": "route_waisanguan", "title": "外三关西线（偏头—宁武—雁门）", "tags": ["明长城", "晋北防线"], "note": "明山西镇外三关：偏头关—宁武/阳方口—雁门关。示意连线，非精确墙体走向。", "point_ids": ["bt_03", "bt_04", "bt_08", "sx_03"]}, {"id": "route_anda_west", "title": "俺答西线示意（老牛湾→丫角→老营）", "tags": ["明长城", "晋北防线"], "note": "对话更正后：墙北清水河南境黄土梁为骑兵走廊；与县川河无关。示意点序。", "point_ids": ["bt_06", "bt_05", "bt_04", "bt_03"]}, {"id": "route_zouxikou", "title": "走西口东线示意（杀虎口→土默川）", "tags": ["走西口", "土默川"], "note": "杀虎口互市/走西口东线通向凉城、归化（呼和浩特）一带。示意连线。", "point_ids": ["bt_01", "bt_02", "bt_15", "bt_12"]}, {"id": "route_shoujiang", "title": "三受降城示意", "tags": ["土默川"], "note": "唐代三受降城东西呼应，位置说法有争议，点位为约位示意。", "point_ids": ["bt_10", "bt_11"]}];
+    const ROUTE_COLORS = ["#ff7a59", "#5ac8a8", "#e6b84d", "#a78bfa", "#3d8bfd", "#f472b6"];
+
+    const map = L.map("map",{zoomControl:true}).setView([38.2,112.2],6);
+    const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OSM'});
+    const topo=L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:'OpenTopoMap'});
+    const waterways=L.layerGroup(); let waterwaysEnabled=false,waterwaysLoading=false,waterwaysTimer=null;
+    osm.addTo(map);
+    L.control.layers({"标准底图":osm,"地形 / 等高线 (OpenTopoMap)":topo},{"河网 (OSM 水系)":waterways},{collapsed:false,position:"topright"}).addTo(map);
+    const markersLayer=L.layerGroup().addTo(map);
+    const routesLayer=L.layerGroup().addTo(map);
+
+    let points=loadPoints();
+    let routes=loadRoutes();
+    let activeTags=new Set();
+    let enabledRoutes=new Set(routes.map(r=>r.id));
+    let addMode=false, editingId=null, detailId=null;
+
+    const el={
+      list:document.getElementById("point-list"), search:document.getElementById("search"),
+      filters:document.getElementById("filters"), routes:document.getElementById("routes"),
+      hint:document.getElementById("hint"), detail:document.getElementById("detail"),
+      dTitle:document.getElementById("d-title"), dEra:document.getElementById("d-era"), dBody:document.getElementById("detail-body"),
+      backdrop:document.getElementById("modal-backdrop"), modalTitle:document.getElementById("modal-title"),
+      title:document.getElementById("f-title"), era:document.getElementById("f-era"), tags:document.getElementById("f-tags"),
+      desc:document.getElementById("f-desc"), detailField:document.getElementById("f-detail"), geo:document.getElementById("f-geo"),
+      visit:document.getElementById("f-visit"), source:document.getElementById("f-source"), verified:document.getElementById("f-verified"),
+      photos:document.getElementById("f-photos"), lat:document.getElementById("f-lat"), lng:document.getElementById("f-lng"),
+      btnAdd:document.getElementById("btn-add"), btnSave:document.getElementById("btn-save"), btnCancel:document.getElementById("btn-cancel"),
+      btnDelete:document.getElementById("btn-delete"), btnExport:document.getElementById("btn-export"), btnImport:document.getElementById("btn-import"),
+      btnReset:document.getElementById("btn-reset"), importFile:document.getElementById("import-file"),
+    };
+
+    function uid(){return "p_"+Math.random().toString(36).slice(2,10)+Date.now().toString(36)}
+    function escapeHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+    function normalize(p){
+      return {
+        id:p.id||uid(), title:p.title||"", era:p.era||"", desc:p.desc||"", detail:p.detail||"",
+        geo_notes:p.geo_notes||"", visit_tips:p.visit_tips||"", source:p.source||"",
+        verified: p.verified !== false && p.verified !== "false",
+        tags: Array.isArray(p.tags)?p.tags.filter(Boolean): String(p.tags||"").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+        photos: Array.isArray(p.photos)?p.photos.filter(Boolean):[],
+        lat:Number(p.lat), lng:Number(p.lng)
+      };
+    }
+    function hasRich(p){return !!(p.detail||p.geo_notes||p.visit_tips||(p.photos&&p.photos.length))}
+    function loadPoints(){
+      try{
+        const raw=localStorage.getItem(STORAGE_KEY);
+        if(!raw){const s=SEED_POINTS.map(normalize); localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); return s;}
+        const data=JSON.parse(raw); return Array.isArray(data)?data.map(normalize).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)):SEED_POINTS.map(normalize);
+      }catch(e){return SEED_POINTS.map(normalize)}
+    }
+    function loadRoutes(){
+      try{
+        const raw=localStorage.getItem(ROUTE_KEY);
+        if(!raw){localStorage.setItem(ROUTE_KEY,JSON.stringify(SEED_ROUTES)); return JSON.parse(JSON.stringify(SEED_ROUTES));}
+        const data=JSON.parse(raw); return Array.isArray(data)?data:JSON.parse(JSON.stringify(SEED_ROUTES));
+      }catch(e){return JSON.parse(JSON.stringify(SEED_ROUTES))}
+    }
+    function saveAll(){localStorage.setItem(STORAGE_KEY,JSON.stringify(points)); localStorage.setItem(ROUTE_KEY,JSON.stringify(routes));}
+
+    function allTags(){
+      const s=new Set(); points.forEach(p=>(p.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b,"zh"));
+    }
+    function renderFilters(){
+      const tags=allTags();
+      el.filters.innerHTML = tags.map(t=>`<span class="chip ${activeTags.has(t)?"on":""}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join("") +
+        (activeTags.size?`<span class="chip" data-tag="__clear">清除筛选</span>`:"");
+      el.filters.querySelectorAll(".chip").forEach(chip=>{
+        chip.onclick=()=>{
+          const t=chip.dataset.tag;
+          if(t==="__clear") activeTags.clear();
+          else if(activeTags.has(t)) activeTags.delete(t); else activeTags.add(t);
+          renderFilters(); refreshView();
+        };
+      });
+    }
+    function renderRouteToggles(){
+      el.routes.innerHTML = routes.map((r,i)=>{
+        const color=ROUTE_COLORS[i%ROUTE_COLORS.length];
+        const on=enabledRoutes.has(r.id);
+        return `<label class="route-row"><input type="checkbox" data-id="${r.id}" ${on?"checked":""}/><span class="swatch" style="background:${color}"></span><span>${escapeHtml(r.title)}</span></label>`;
+      }).join("") || '<div class="empty" style="padding:4px 0">暂无路线</div>';
+      el.routes.querySelectorAll("input").forEach(inp=>{
+        inp.onchange=()=>{ if(inp.checked) enabledRoutes.add(inp.dataset.id); else enabledRoutes.delete(inp.dataset.id); drawRoutes(); };
+      });
+    }
+
+    function visiblePoints(){
+      const q=(el.search.value||"").trim().toLowerCase();
+      return points.filter(p=>{
+        if(activeTags.size){
+          const pt=new Set(p.tags||[]);
+          for(const t of activeTags){ if(!pt.has(t)) return false; }
+        }
+        if(!q) return true;
+        return (p.title||"").toLowerCase().includes(q)||(p.era||"").toLowerCase().includes(q)||(p.desc||"").toLowerCase().includes(q);
+      });
+    }
+
+    function popupHtml(p){
+      const era=p.era?`<div style="color:#9aa8bc;font-size:12px;margin:2px 0 6px;">${escapeHtml(p.era)}</div>`:"";
+      const warn=!p.verified?`<div style="color:#e6b84d;font-size:12px;margin-bottom:4px;">待核实</div>`:"";
+      const desc=p.desc?`<div style="white-space:pre-wrap;max-width:240px;">${escapeHtml(p.desc)}</div>`:"";
+      return `<strong>${escapeHtml(p.title||"未命名")}</strong>${era}${warn}${desc}<div class="popup-actions"><button type="button" class="leaflet-popup-detail" data-id="${p.id}">查看详情</button></div>`;
+    }
+
+    function renderMarkers(){
+      markersLayer.clearLayers();
+      const vis=new Set(visiblePoints().map(p=>p.id));
+      points.forEach(p=>{
+        if(!vis.has(p.id)) return;
+        const m=L.marker([p.lat,p.lng]);
+        m.bindPopup(popupHtml(p));
+        m.on("popupopen",(e)=>{
+          const btn=e.popup.getElement().querySelector(".leaflet-popup-detail");
+          if(btn) btn.onclick=(ev)=>{ev.preventDefault(); openDetail(p.id);};
+        });
+        m.addTo(markersLayer);
+      });
+      renderList();
+      drawRoutes();
+    }
+
+    function drawRoutes(){
+      routesLayer.clearLayers();
+      const byId=Object.fromEntries(points.map(p=>[p.id,p]));
+      routes.forEach((r,i)=>{
+        if(!enabledRoutes.has(r.id)) return;
+        // if tag filter active, only show route when it intersects filter OR route tags match
+        if(activeTags.size){
+          const rt=new Set(r.tags||[]);
+          const hit=[...activeTags].some(t=>rt.has(t)) || r.point_ids.some(id=> (byId[id]?.tags||[]).some(t=>activeTags.has(t)));
+          if(!hit) return;
+        }
+        const latlngs=[];
+        r.point_ids.forEach(id=>{ const p=byId[id]; if(p) latlngs.push([p.lat,p.lng]); });
+        if(latlngs.length<2) return;
+        const color=ROUTE_COLORS[i%ROUTE_COLORS.length];
+        L.polyline(latlngs,{color,weight:3.5,opacity:0.9,dashArray:"8 6"}).bindPopup(`<strong>${escapeHtml(r.title)}</strong><br/><span style="color:#9aa8bc">${escapeHtml(r.note||"示意连线")}</span>`).addTo(routesLayer);
+      });
+    }
+
+    function renderList(){
+      const list=visiblePoints().sort((a,b)=>(a.title||"").localeCompare(b.title||"","zh"));
+      if(!list.length){ el.list.innerHTML='<div class="empty">没有匹配的点。</div>'; return; }
+      el.list.innerHTML=list.map(p=>{
+        const badges=(hasRich(p)?'<span class="badge dest">有详情</span>':'')+(!p.verified?'<span class="badge warn">待核实</span>':'');
+        return `<div class="point-card" data-id="${p.id}"><h3>${escapeHtml(p.title||"未命名")}${badges}</h3><div class="meta">${escapeHtml(p.era||"年代未填")}${(p.tags&&p.tags.length)?" · "+escapeHtml(p.tags.join(" / ")):""}</div></div>`;
+      }).join("");
+      el.list.querySelectorAll(".point-card").forEach(card=>card.addEventListener("click",()=>openDetail(card.dataset.id)));
+    }
+
+    function section(title,text){ if(!text) return ""; return `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p></section>`; }
+    function openDetail(id){
+      const p=points.find(x=>x.id===id); if(!p) return; detailId=id;
+      el.dTitle.textContent=p.title||"未命名";
+      el.dEra.textContent=(p.era||"") + (p.tags&&p.tags.length?(" · "+p.tags.join(" / ")):"");
+      const photos=(p.photos&&p.photos.length)?`<section><h3>照片</h3><div id="detail-photos">${p.photos.map(u=>`<img src="${escapeHtml(u)}" alt="" loading="lazy"/>`).join("")}</div></section>`:"";
+      const verify = p.verified
+        ? section("史料状态", "已核实（或来自整理稿；仍欢迎纠错）")
+        : section("史料状态", "待核实" + (p.source?("\n来源："+p.source):"\n来源未注明"));
+      el.dBody.innerHTML = verify + section("概述", p.desc||"暂无简述。") + section("详细介绍", p.detail||"二级详情还空着，可点编辑补充。") +
+        section("地理 / 怎么走", p.geo_notes) + section("出行提示", p.visit_tips) + photos +
+        section("坐标", `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+      el.detail.classList.add("show");
+      map.setView([p.lat,p.lng], Math.max(map.getZoom(),9));
+    }
+    function closeDetail(){ el.detail.classList.remove("show"); detailId=null; }
+    function refreshView(){ renderMarkers(); }
+
+    function setAddMode(on){ addMode=on; el.btnAdd.textContent=on?"取消加点":"加点"; el.hint.classList.toggle("show",on); map.getContainer().style.cursor=on?"crosshair":""; }
+    function fillForm(p){
+      el.title.value=p.title||""; el.era.value=p.era||""; el.tags.value=(p.tags||[]).join(", ");
+      el.desc.value=p.desc||""; el.detailField.value=p.detail||""; el.geo.value=p.geo_notes||""; el.visit.value=p.visit_tips||"";
+      el.source.value=p.source||""; el.verified.checked=!!p.verified; el.photos.value=(p.photos||[]).join("\n");
+      el.lat.value=p.lat; el.lng.value=p.lng;
+    }
+    function openCreate(ll){ editingId=null; el.modalTitle.textContent="添加知识点"; fillForm({title:"",era:"",tags:[],desc:"",detail:"",geo_notes:"",visit_tips:"",source:"",verified:false,photos:[],lat:ll.lat,lng:ll.lng}); el.lat.value=ll.lat.toFixed(6); el.lng.value=ll.lng.toFixed(6); el.btnDelete.style.display="none"; el.backdrop.classList.add("show"); }
+    function openEdit(id){ const p=points.find(x=>x.id===id); if(!p) return; editingId=id; el.modalTitle.textContent="编辑知识点"; fillForm(p); el.btnDelete.style.display="inline-block"; el.backdrop.classList.add("show"); setAddMode(false); }
+    function closeModal(){ el.backdrop.classList.remove("show"); editingId=null; }
+    function readForm(){
+      const lat=Number(el.lat.value), lng=Number(el.lng.value);
+      if(!Number.isFinite(lat)||!Number.isFinite(lng)){ alert("请填写有效 lat/lng"); return null; }
+      return { title:el.title.value.trim(), era:el.era.value.trim(),
+        tags:el.tags.value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+        desc:el.desc.value.trim(), detail:el.detailField.value.trim(), geo_notes:el.geo.value.trim(), visit_tips:el.visit.value.trim(),
+        source:el.source.value.trim(), verified:el.verified.checked,
+        photos:el.photos.value.split(/\n+/).map(s=>s.trim()).filter(Boolean), lat, lng };
+    }
+
+    el.btnAdd.onclick=()=>setAddMode(!addMode);
+    el.btnCancel.onclick=closeModal;
+    el.backdrop.onclick=(e)=>{ if(e.target===el.backdrop) closeModal(); };
+    document.getElementById("d-close").onclick=closeDetail;
+    el.detail.onclick=(e)=>{ if(e.target===el.detail) closeDetail(); };
+    document.getElementById("d-edit").onclick=()=>{ if(detailId) openEdit(detailId); };
+    document.getElementById("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; map.setView([p.lat,p.lng],Math.max(map.getZoom(),12)); closeDetail(); };
+    el.search.oninput=refreshView;
+    el.btnSave.onclick=()=>{
+      const data=readForm(); if(!data) return;
+      if(editingId){ const i=points.findIndex(x=>x.id===editingId); if(i>=0) points[i]=normalize({...points[i],...data}); }
+      else points.push(normalize({id:uid(),...data}));
+      saveAll(); renderFilters(); refreshView(); closeModal(); setAddMode(false);
+      if(editingId||detailId) openDetail(editingId||points[points.length-1].id);
+    };
+    el.btnDelete.onclick=()=>{ if(!editingId||!confirm("确定删除？")) return; points=points.filter(x=>x.id!==editingId); saveAll(); renderFilters(); refreshView(); closeModal(); closeDetail(); };
+    map.on("click",(e)=>{ if(addMode) openCreate(e.latlng); });
+    el.btnExport.onclick=()=>{
+      const blob=new Blob([JSON.stringify({points,routes},null,2)],{type:"application/json"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="knowledge-map-v3.json"; a.click(); URL.revokeObjectURL(a.href);
+    };
+    el.btnImport.onclick=()=>el.importFile.click();
+    el.importFile.onchange=async()=>{
+      const file=el.importFile.files&&el.importFile.files[0]; el.importFile.value=""; if(!file) return;
+      try{
+        const raw=JSON.parse(await file.text());
+        const incoming=Array.isArray(raw)?raw:raw.points;
+        if(Array.isArray(raw?.routes)) routes=raw.routes;
+        if(!Array.isArray(incoming)) throw new Error("需要 points 数组，或 {points, routes}");
+        const byId=new Map(points.map(p=>[p.id,p]));
+        incoming.map(normalize).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng)).forEach(p=>{
+          if(byId.has(p.id)) byId.set(p.id,{...byId.get(p.id),...p}); else byId.set(p.id,p);
+        });
+        points=[...byId.values()]; enabledRoutes=new Set(routes.map(r=>r.id));
+        saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+      }catch(err){ alert("导入失败："+err.message); }
+    };
+    el.btnReset.onclick=()=>{
+      if(!confirm("恢复种子点与示意路线？")) return;
+      points=SEED_POINTS.map(normalize); routes=JSON.parse(JSON.stringify(SEED_ROUTES));
+      enabledRoutes=new Set(routes.map(r=>r.id)); saveAll(); renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+    };
+
+    async function refreshWaterways(){
+      if(!waterwaysEnabled||waterwaysLoading) return;
+      if(map.getZoom()<7){ waterways.clearLayers(); return; }
+      const b=map.getBounds();
+      const query=`[out:json][timeout:25];(way["waterway"~"river|stream|canal"](${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}););out geom;`;
+      waterwaysLoading=true;
+      try{
+        const res=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:query});
+        if(!res.ok) throw new Error("Overpass "+res.status);
+        const json=await res.json(); waterways.clearLayers();
+        (json.elements||[]).forEach(elmt=>{
+          if(!elmt.geometry||elmt.geometry.length<2) return;
+          L.polyline(elmt.geometry.map(g=>[g.lat,g.lon]),{color:"#2aa6ff",weight:elmt.tags&&elmt.tags.waterway==="river"?2.5:1.5,opacity:0.85}).addTo(waterways);
+        });
+      }catch(e){console.warn(e)} finally{waterwaysLoading=false}
+    }
+    function scheduleWaterways(){ if(!waterwaysEnabled) return; clearTimeout(waterwaysTimer); waterwaysTimer=setTimeout(refreshWaterways,600); }
+    map.on("overlayadd",e=>{ if(e.layer===waterways){ waterwaysEnabled=true; scheduleWaterways(); }});
+    map.on("overlayremove",e=>{ if(e.layer===waterways){ waterwaysEnabled=false; waterways.clearLayers(); }});
+    map.on("moveend", scheduleWaterways);
+    function fitAll(){ const vis=visiblePoints(); if(!vis.length) return; map.fitBounds(L.latLngBounds(vis.map(p=>[p.lat,p.lng])).pad(0.15)); }
+
+    renderFilters(); renderRouteToggles(); refreshView(); fitAll();
+  </script>
+</body>
+</html>
