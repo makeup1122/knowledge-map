@@ -292,12 +292,6 @@
       });
     }
 
-    function popupHtml(p){
-      const era=p.era?`<div style="color:#9aa8bc;font-size:12px;margin:2px 0 6px;">${escapeHtml(p.era)}</div>`:"";
-      const warn=!p.verified?`<div style="color:#e6b84d;font-size:12px;margin-bottom:4px;">待核实</div>`:"";
-      const desc=p.desc?`<div style="white-space:pre-wrap;max-width:240px;">${escapeHtml(p.desc)}</div>`:"";
-      return `<strong>${escapeHtml(p.title||"未命名")}</strong>${era}${warn}${desc}<div class="popup-actions"><button type="button" class="leaflet-popup-detail" data-id="${p.id}">查看详情</button></div>`;
-    }
 
     function regionOf(p){ return p.region || REGION_MAP[p.id] || "未分区"; }
     function queryActive(){ return !!(activeTags.size || (el.search.value||"").trim()); }
@@ -390,7 +384,7 @@
         section("坐标", `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
       el.dBody.scrollTop=0;
       showPanel(true);
-      if(!opts.keepView) map.setView([p.lat,p.lng], Math.max(map.getZoom(),9));
+      if(!opts.keepView) centerOn(p.lat,p.lng,Math.max(map.getZoom(),9));
     }
     function closeDetail(){
       $("detail-view").classList.remove("open","expanded"); document.body.classList.remove("rp-open"); detailId=null;
@@ -425,6 +419,16 @@
         section("说明", r.note||r.desc||"示意连线")+`<section><h3>途经点（${stops.length}）</h3><ol style="margin:0;padding-left:1.4em">${stops.map(p=>`<li style="font-size:14px;line-height:1.8"><a href="#" data-pid="${p.id}">${escapeHtml(p.title)}</a></li>`).join("")}</ol></section>`);
       el.dBody.querySelectorAll("a[data-pid]").forEach(a=>a.onclick=e=>{e.preventDefault(); openDetail(a.dataset.pid);});
     }
+    // 右栏/底部栏打开时，把目标点放在未被遮挡的地图区域中央
+    function centerOn(lat,lng,z){
+      const pv=$("detail-view"); let dx=0, dy=0;
+      if(pv.classList.contains("open")){
+        if(window.matchMedia("(max-width:800px)").matches) dy=(pv.classList.contains("expanded")?0.85:0.45)*window.innerHeight/2;
+        else dx=pv.offsetWidth/2;
+      }
+      const pt=map.project([lat,lng],z).add([dx,dy]);
+      map.setView(map.unproject(pt,z),z);
+    }
     function refreshView(){ renderMarkers(); }
 
     function setAddMode(on){ addMode=on; el.btnAdd.textContent=on?"取消加点":"加点"; el.hint.classList.toggle("show",on); map.getContainer().style.cursor=on?"crosshair":""; }
@@ -452,7 +456,7 @@
     el.backdrop.onclick=(e)=>{ if(e.target===el.backdrop) closeModal(); };
     $("d-back").onclick=closeDetail;
     $("d-edit").onclick=()=>{ if(detailId) openEdit(detailId); };
-    $("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; map.setView([p.lat,p.lng],Math.max(map.getZoom(),12)); if(window.matchMedia("(max-width:800px)").matches) $("detail-view").classList.remove("expanded"); };
+    $("d-focus").onclick=()=>{ const p=points.find(x=>x.id===detailId); if(!p) return; if(window.matchMedia("(max-width:800px)").matches) $("detail-view").classList.remove("expanded"); centerOn(p.lat,p.lng,Math.max(map.getZoom(),12)); };
     $("rp-handle").onclick=()=>{ $("detail-view").classList.toggle("expanded"); };
     el.search.oninput=refreshView;
     el.btnFilter.onclick=()=>{ const on=el.filterArea.classList.toggle("show"); el.btnFilter.classList.toggle("on",on); };
@@ -548,16 +552,6 @@
     let enabledProjects=new Set();
     function mergeProjectText(projId,extra){ const pr=SEED_PROJECTS.find(p=>p.id===projId); if(!pr) return; [...pr.nodes,...pr.segments].forEach(x=>{ const e=extra[x.id]; if(e){ if(e.desc) x.desc=e.desc; if(e.sources) x.sources=e.sources; } }); drawProjects(); }
     function srcLinks(list){ if(!list||!list.length) return ""; return '<div style="margin-top:4px">出处：'+list.map(s=>`<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a>`).join("；")+'</div>'; }
-    function segPopup(pr,s){
-      return `<div class="proj-pop"><strong>${escapeHtml(s.title)}</strong>${s.schematic?'<span class="lab">示意线</span>':''}<br/>`+
-        `<span style="color:#9aa8bc">${escapeHtml(pr.title)} · ${escapeHtml(s.line)} · ${escapeHtml(s.mode||"")}${s.length_km!=null?" · 约 "+s.length_km+" km":""}</span>`+
-        `<div style="margin-top:4px">${escapeHtml(s.desc||s.note||"")}</div>`+(s.geometry_source?`<div style="color:#9aa8bc;font-size:11px">走向：${escapeHtml(s.geometry_source)}</div>`:"")+
-        srcLinks(s.sources&&s.sources.length?s.sources:pr.sources)+`</div>`;
-    }
-    function nodePopup(pr,n){
-      return `<div class="proj-pop"><strong>${escapeHtml(n.title)}</strong>${n.approx?'<span class="lab">约位</span>':''}<br/><span style="color:#9aa8bc">${escapeHtml(pr.title)} · ${escapeHtml(n.kind||"")}</span>`+
-        `<div style="margin-top:4px">${escapeHtml(n.desc||n.note||"")}</div>`+(n.approx?'<div style="color:#9aa8bc;font-size:11px">约位：坐标取附近村镇，非精确位置</div>':'')+srcLinks(n.sources)+`</div>`;
-    }
     function drawProjects(){
       projectsLayer.clearLayers();
       SEED_PROJECTS.forEach(pr=>{
